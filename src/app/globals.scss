@@ -1,0 +1,35 @@
+@font-face {
+  font-family: Unbounded;
+  src: url('/media/Unbounded-s.p.0j.7ojjb2f6py.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter Tight';
+  src: url('/external/fonts.gstatic.com/ca85e9551044.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter Tight';
+  src: url('/external/fonts.gstatic.com/1c9f61aefc5b.ttf') format('truetype');
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter Tight';
+  src: url('/external/fonts.gstatic.com/e7cf9b4d4d12.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: #101012; color: #fff; font-family: 'Inter Tight', Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+button, select { font: inherit; }
+button { cursor: pointer; }
+button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid #ffda00; outline-offset: 3px; }
+a { color: inherit; text-decoration: none; }
+img { display: block; max-width: 100%; }
+::selection { background: #ffda00; color: #101012; }

@@ -1,0 +1,17 @@
+{
+  "name": "avan-home-replica",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test:inventory": "node --test scripts/inventory.test.mjs"
+  },
+  "dependencies": {
+    "next": "16.4.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "sass": "^1.97.3"
+  }
+}

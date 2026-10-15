@@ -1,0 +1,11 @@
+<svg class="svg-arrow" width="15" height="17" viewBox="0 0 15 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+            d="M11.5 0.270508C12.8333 -0.499206 14.5 0.463361 14.5 2.00293V14.127C14.5 15.6665 12.8333 16.6291 11.5 15.8594L1 9.79688C-0.33327 9.02707 -0.333259 7.10282 1 6.33301"
+            fill="#262A32"
+            stroke="#525A6680"
+            stroke-width="0.6"
+            stroke-linecap="butt"
+            stroke-dasharray="30 10"
+            stroke-dashoffset="-3.3"
+    />
+</svg>
