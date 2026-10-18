@@ -2,7 +2,7 @@ export const inventoryCopy = {
   ru: {
     title: 'Оцени свой инвентарь Steam',
     intro: 'Вставь Trade URL — покажем предметы и их стоимость.',
-    evaluate: 'Оценить инвентарь', loading: 'Загружаем инвентарь…',
+    evaluate: 'Оценить инвентарь', loading: 'Загружаем инвентарь…', retryIn: 'Повторить через',
     help: 'Где найти Trade URL?', publicNote: 'Инвентарь должен быть открытым. Вход в Steam не нужен.',
     invalidUrl: 'Вставьте полную ссылку обмена Steam с параметрами partner и token.',
     cancel: 'Отмена', change: 'Изменить Trade URL', refresh: 'Обновить инвентарь',
@@ -20,7 +20,10 @@ export const inventoryCopy = {
     errors: {
       PRIVATE_INVENTORY: 'Инвентарь закрыт. В настройках приватности Steam откройте инвентарь для всех и повторите оценку.',
       INVENTORY_NOT_FOUND: 'Инвентарь не найден. Проверьте Trade URL и выбранную игру.',
-      STEAM_RATE_LIMIT: 'Steam временно ограничил запросы. Подождите минуту и повторите попытку.',
+      STEAM_RATE_LIMIT: 'Steam временно ограничил запросы с сервера. Повторите попытку после паузы.',
+      INVENTORY_BUSY: 'Инвентарь уже загружается. Повторите попытку через несколько секунд.',
+      CACHE_UNAVAILABLE: 'Сервис загрузки инвентаря временно недоступен. Повторите попытку позже.',
+      BACKEND_UNAVAILABLE: 'Сервис загрузки инвентаря временно недоступен. Повторите попытку позже.',
       STEAM_UNAVAILABLE: 'Steam сейчас недоступен. Попробуйте ещё раз немного позже.',
       TIMEOUT: 'Steam отвечает слишком долго. Повторите попытку.',
       INCOMPLETE_INVENTORY: 'Steam вернул неполный инвентарь. Повторите загрузку.',
@@ -40,7 +43,7 @@ export const inventoryCopy = {
   en: {
     title: 'Check your Steam inventory value',
     intro: 'Paste your Trade URL to see your items and their value.',
-    evaluate: 'Value inventory', loading: 'Loading inventory…',
+    evaluate: 'Value inventory', loading: 'Loading inventory…', retryIn: 'Try again in',
     help: 'Where is my Trade URL?', publicNote: 'Your inventory must be public. No Steam login required.',
     invalidUrl: 'Paste the full Steam trade link with the partner and token parameters.',
     cancel: 'Cancel', change: 'Change Trade URL', refresh: 'Refresh inventory',
@@ -58,7 +61,10 @@ export const inventoryCopy = {
     errors: {
       PRIVATE_INVENTORY: 'Your inventory is private. Set your Steam inventory privacy to Public and try again.',
       INVENTORY_NOT_FOUND: 'Inventory not found. Check your Trade URL and the selected game.',
-      STEAM_RATE_LIMIT: 'Steam is temporarily limiting requests. Wait a minute and try again.',
+      STEAM_RATE_LIMIT: 'Steam is temporarily limiting server requests. Try again after the cooldown.',
+      INVENTORY_BUSY: 'The inventory is already loading. Try again in a few seconds.',
+      CACHE_UNAVAILABLE: 'The inventory loading service is temporarily unavailable. Please try again later.',
+      BACKEND_UNAVAILABLE: 'The inventory loading service is temporarily unavailable. Please try again later.',
       STEAM_UNAVAILABLE: 'Steam is currently unavailable. Please try again later.',
       TIMEOUT: 'Steam took too long to respond. Please try again.',
       INCOMPLETE_INVENTORY: 'Steam returned an incomplete inventory. Please try again.',

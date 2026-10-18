@@ -41,7 +41,7 @@ with sync_playwright() as playwright:
         page = context.new_page()
         requests = []
         errors = []
-        state = {'private': False, 'large': False, 'archive': False}
+        state = {'private': False, 'large': False, 'archive': False, 'limited': False}
         page.on('pageerror', lambda error: errors.append(str(error)))
 
         def respond(route):
@@ -49,7 +49,9 @@ with sync_playwright() as playwright:
             requests.append(body)
             assert set(body) == {'steamId64', 'appId', 'currency'}
             assert body['steamId64'] == '76561198060265728'
-            if state['private']:
+            if state['limited']:
+                route.fulfill(status=429, headers={'Retry-After': '2'}, json={'error': {'code': 'STEAM_RATE_LIMIT', 'retryAfterSeconds': 2}})
+            elif state['private']:
                 route.fulfill(status=403, json={'error': {'code': 'PRIVATE_INVENTORY'}})
             else:
                 data = fixture(body)
@@ -131,6 +133,23 @@ with sync_playwright() as playwright:
             scroll = section.locator('div[class*="_itemScroll"]')
             assert scroll.evaluate('(el) => el.scrollHeight > el.clientHeight')
             assert not page.evaluate('document.documentElement.scrollWidth > innerWidth')
+        # A Steam cooldown blocks both the button and Enter submissions, then allows a manual retry.
+        section.get_by_role('button', name='Change Trade URL' if language == 'en' else 'Изменить Trade URL').click()
+        state['limited'] = True
+        url.press('Enter')
+        expect(section.get_by_role('alert')).to_contain_text('limiting' if language == 'en' else 'ограничил')
+        retry_button = section.locator('form > button[type=submit]')
+        expect(retry_button).to_be_disabled()
+        expect(retry_button).to_contain_text('Try again in' if language == 'en' else 'Повторить через')
+        request_count = len(requests)
+        url.press('Enter')
+        section.get_by_role('button', name='Dota 2', exact=True).evaluate('(button) => button.click()')
+        assert len(requests) == request_count
+        state['limited'] = False
+        expect(retry_button).to_be_enabled(timeout=5000)
+        url.press('Enter')
+        expect(cards).to_have_count(100 if state['large'] else 3)
+        assert len(requests) == request_count + 1
         assert not errors, errors
         print(f'{width}px {language}: form, errors, cards, totals, selection, search, sort, games, editing, layout OK')
         context.close()

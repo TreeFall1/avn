@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { steamIdFromTradeUrl, normalizeInventory, summarizeInventory } from '../src/lib/inventory.mjs';
 import { createInventoryService } from '../src/lib/server/inventory.mjs';
+import { createInventoryHandler } from '../src/lib/server/inventory-handler.mjs';
+import { createSharedInventoryCache } from '../src/lib/server/inventory-cache.mjs';
+import { retryAfterSeconds } from '../src/lib/retry.mjs';
 import archivedPrices from '../src/data/inventory-prices.json' with { type: 'json' };
 
 const steamId64 = '76561198060265728';
@@ -151,4 +154,172 @@ test('Missing exchange rates returns actual USD amounts with explicit currency f
 test('Null upstream JSON is reported as a service failure', async () => {
   const evaluate = createInventoryService({ fetcher: async () => ok(null) });
   await assert.rejects(evaluate({ steamId64 }), error => error.code === 'STEAM_UNAVAILABLE');
+});
+
+test('Retry-After accepts seconds and HTTP dates, and rejects malformed values', () => {
+  const now = Date.UTC(2026, 9, 18, 12);
+  assert.equal(retryAfterSeconds('180', now), 180);
+  assert.equal(retryAfterSeconds(new Date(now + 120000).toUTCString(), now), 120);
+  assert.equal(retryAfterSeconds(new Date(now - 120000).toUTCString(), now), 1);
+  for (const value of [null, '', '-5', 'later']) assert.equal(retryAfterSeconds(value, now), 60);
+});
+
+test('Steam 429 opens a cooldown across profiles and games; missing Retry-After backs off', async () => {
+  let time = Date.UTC(2026, 9, 18);
+  let calls = 0;
+  const evaluate = createInventoryService({ now: () => time, fetcher: async () => { calls++; return new Response('', { status: 429 }); } });
+  await assert.rejects(evaluate({ steamId64 }), error => error.retryAt === time + 60000);
+  await assert.rejects(evaluate({ steamId64, appId: 570 }), error => error.code === 'STEAM_RATE_LIMIT');
+  await assert.rejects(evaluate({ steamId64: '76561198060265729' }), error => error.code === 'STEAM_RATE_LIMIT');
+  assert.equal(calls, 1);
+  time += 60000;
+  await assert.rejects(evaluate({ steamId64 }), error => error.retryAt === time + 120000);
+  assert.equal(calls, 2);
+});
+
+function memorySharedCache(now) {
+  const entries = new Map();
+  let counter = 0;
+  const read = key => {
+    const entry = entries.get(key);
+    return entry && entry.expires > now() ? structuredClone(entry.value) : null;
+  };
+  return {
+    async get(key) { return read(key); },
+    async set(key, value, ttl) { entries.set(key, { value: structuredClone(value), expires: now() + ttl }); },
+    async acquire(key, ttl) {
+      if (read(key)) return null;
+      const owner = `owner-${++counter}`;
+      entries.set(key, { value: owner, expires: now() + ttl });
+      return owner;
+    },
+    async release(key, owner) { if (read(key) === owner) entries.delete(key); },
+  };
+}
+
+test('Separate function instances share fresh inventories and serialize Steam loads', async () => {
+  let time = Date.UTC(2026, 9, 18);
+  const sharedCache = memorySharedCache(() => time);
+  let calls = 0;
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const fetcher = async input => {
+    const host = new URL(input).hostname;
+    if (host === 'steamcommunity.com') { calls++; await pending; return ok(fullInventory()); }
+    if (host === 'api.skinport.com') return ok(prices);
+    return ok({ result: 'success', base_code: 'USD', rates: { USD: 1, RUB: 80 } });
+  };
+  const first = createInventoryService({ fetcher, sharedCache, now: () => time });
+  const second = createInventoryService({ fetcher, sharedCache, now: () => time });
+  const loading = first({ steamId64 });
+  // Allow the first function to acquire the distributed lock.
+  for (let i = 0; i < 10 && calls === 0; i++) await Promise.resolve();
+  await assert.rejects(second({ steamId64 }), error => error.code === 'INVENTORY_BUSY');
+  assert.equal(calls, 1);
+  finish();
+  await loading;
+  const cached = await second({ steamId64, currency: 'USD' });
+  assert.equal(cached.summary.totalCents, 1234);
+  assert.equal(calls, 1);
+  time += 120001;
+  await second({ steamId64 });
+  assert.equal(calls, 2);
+});
+
+test('A Steam cooldown is shared across instances and preserves the upstream delay', async () => {
+  const time = Date.UTC(2026, 9, 18);
+  const sharedCache = memorySharedCache(() => time);
+  let calls = 0;
+  const fetcher = async () => { calls++; return new Response('', { status: 429, headers: { 'Retry-After': '180' } }); };
+  const first = createInventoryService({ fetcher, sharedCache, now: () => time });
+  const second = createInventoryService({ fetcher, sharedCache, now: () => time });
+  await assert.rejects(first({ steamId64 }), error => error.retryAt === time + 180000);
+  await assert.rejects(second({ steamId64: '76561198060265729' }), error => error.retryAt === time + 180000);
+  assert.equal(calls, 1);
+});
+
+test('Configured shared-cache outages stop requests before they reach Steam', async () => {
+  let calls = 0;
+  const evaluate = createInventoryService({ sharedCache: { get: async () => { throw new Error('offline'); } }, fetcher: async () => { calls++; } });
+  await assert.rejects(evaluate({ steamId64 }), error => error.code === 'CACHE_UNAVAILABLE');
+  assert.equal(calls, 0);
+});
+
+test('The Redis adapter uses authenticated POST commands and owner-checked unlocks', async () => {
+  const commands = [];
+  const cache = createSharedInventoryCache({ UPSTASH_REDIS_REST_URL: 'https://cache.example.test', UPSTASH_REDIS_REST_TOKEN: 'server-only-test-token' }, async (url, options) => {
+    assert.equal(new URL(url).search, '');
+    assert.equal(options.headers.Authorization, 'Bearer server-only-test-token');
+    assert.equal(options.method, 'POST');
+    const command = JSON.parse(options.body);
+    commands.push(command);
+    return ok({ result: command[0] === 'GET' ? null : command[0] === 'EVAL' ? 1 : 'OK' });
+  });
+  assert.equal(await cache.get('key'), null);
+  await cache.set('key', { safe: true }, 120000);
+  const owner = await cache.acquire('lock', 50000);
+  await cache.release('lock', owner);
+  assert.deepEqual(commands[1], ['SET', 'key', '{"safe":true}', 'PX', 120000]);
+  assert.deepEqual(commands[2].slice(3), ['NX', 'PX', 50000]);
+  assert.equal(commands[3][0], 'EVAL');
+  assert.equal(commands[3].at(-1), owner);
+  assert.equal(createSharedInventoryCache({}), null);
+});
+
+const apiRequest = (body, headers = {}) => new Request('https://site.example.test/api/inventory', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json', ...headers } });
+const silentLogger = { warn() {} };
+
+test('The HTTP handler returns the real retry delay in both the body and header', async () => {
+  const now = Date.UTC(2026, 9, 18);
+  const service = createInventoryService({ now: () => now, fetcher: async () => new Response('', { status: 429, headers: { 'Retry-After': '180' } }) });
+  const handler = createInventoryHandler({ evaluate: service, env: {}, now: () => now, logger: silentLogger });
+  const response = await handler(apiRequest({ steamId64 }));
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('Retry-After'), '180');
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.deepEqual(await response.json(), { error: { code: 'STEAM_RATE_LIMIT', retryAfterSeconds: 180 } });
+});
+
+test('A dedicated backend receives only validated public inventory parameters', async () => {
+  let directCalls = 0;
+  const handler = createInventoryHandler({
+    evaluate: async () => { directCalls++; }, logger: silentLogger,
+    env: { INVENTORY_BACKEND_URL: 'https://inventory.example.test/api/inventory', INVENTORY_BACKEND_TOKEN: 'test-service-token' },
+    fetcher: async (url, options) => {
+      assert.equal(String(url), 'https://inventory.example.test/api/inventory');
+      assert.equal(options.headers.Authorization, 'Bearer test-service-token');
+      assert.deepEqual(JSON.parse(options.body), { steamId64, appId: 730, currency: 'RUB' });
+      return ok({ steamId64, appId: 730, currency: 'RUB', items: [], summary: { itemCount: 0, totalCents: 0 }, pricing: {} });
+    },
+  });
+  const response = await handler(apiRequest({ steamId64, token: 'do-not-forward', tradeUrl }));
+  assert.equal(response.status, 200);
+  assert.equal(directCalls, 0);
+});
+
+test('Backend authentication, invalid input and backend failures never fall back to Steam', async () => {
+  let directCalls = 0;
+  let remoteCalls = 0;
+  const handler = createInventoryHandler({
+    evaluate: async () => { directCalls++; }, logger: silentLogger,
+    env: { INVENTORY_BACKEND_URL: 'https://inventory.example.test/api/inventory', INVENTORY_BACKEND_TOKEN: 'test-token', INVENTORY_API_TOKEN: 'inbound-test-token' },
+    fetcher: async () => { remoteCalls++; throw new Error('offline'); },
+  });
+  assert.equal((await handler(apiRequest({ steamId64 }))).status, 401);
+  const authorization = { Authorization: 'Bearer inbound-test-token' };
+  assert.equal((await handler(apiRequest({ steamId64: 'bad' }, authorization))).status, 400);
+  assert.equal((await handler(apiRequest({ steamId64 }, authorization))).status, 503);
+  assert.equal(directCalls, 0);
+  assert.equal(remoteCalls, 1);
+});
+
+test('A dedicated backend rate limit reaches the browser without losing Retry-After', async () => {
+  const handler = createInventoryHandler({
+    logger: silentLogger, env: { INVENTORY_BACKEND_URL: 'https://inventory.example.test/api/inventory', INVENTORY_BACKEND_TOKEN: 'test-token' },
+    fetcher: async () => Response.json({ error: { code: 'STEAM_RATE_LIMIT' } }, { status: 429, headers: { 'Retry-After': '180' } }),
+  });
+  const response = await handler(apiRequest({ steamId64 }));
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('Retry-After'), '180');
+  assert.equal((await response.json()).error.retryAfterSeconds, 180);
 });

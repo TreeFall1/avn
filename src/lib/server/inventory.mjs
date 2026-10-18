@@ -1,21 +1,33 @@
 import archivedPrices from '../../data/inventory-prices.json' with { type: 'json' };
 import { GAMES, INVENTORY_CURRENCIES, isSteamId64, normalizeInventory, summarizeInventory } from '../inventory.mjs';
 import { getMinimumPayoutCents } from '../payout.mjs';
+import { retryAfterSeconds } from '../retry.mjs';
+import { createSharedInventoryCache } from './inventory-cache.mjs';
+
+const INVENTORY_TTL_MS = 120_000;
+const COOLDOWN_KEY = 'avan:steam:v1:cooldown';
+const LOCK_KEY = 'avan:steam:v1:fetch-lock';
 
 export class InventoryError extends Error {
-  constructor(code, status = 502) {
+  constructor(code, status = 502, retryAt = null) {
     super(code);
     this.code = code;
     this.status = status;
+    this.retryAt = retryAt;
   }
 }
 
 // Process-local, bounded caches also coalesce concurrent requests. Public inventory
 // data is cached briefly; private trade tokens are never sent here or retained.
-export function createInventoryService({ fetcher = (...args) => fetch(...args), now = Date.now } = {}) {
+export function createInventoryService({ fetcher = (...args) => fetch(...args), now = Date.now, sharedCache = null } = {}) {
   const inventoryCache = new Map();
   const priceCache = new Map();
   let ratesCache;
+  let steamRetryAt = 0;
+  let steamFailures = 0;
+  let steamBusy = false;
+
+  const rateLimitError = () => new InventoryError('STEAM_RATE_LIMIT', 429, steamRetryAt);
 
   async function json(url, source, signal) {
     let response;
@@ -28,7 +40,13 @@ export function createInventoryService({ fetcher = (...args) => fetch(...args), 
     } catch (error) {
       throw new InventoryError(error.name === 'TimeoutError' || signal.aborted ? 'TIMEOUT' : `${source.toUpperCase()}_UNAVAILABLE`, 503);
     }
-    if (response.status === 429) throw new InventoryError(source === 'steam' ? 'STEAM_RATE_LIMIT' : 'PRICES_UNAVAILABLE', 429);
+    if (response.status === 429) {
+      if (source !== 'steam') throw new InventoryError('PRICES_UNAVAILABLE', 429);
+      steamFailures += 1;
+      const delay = retryAfterSeconds(response.headers.get('Retry-After'), now(), Math.min(900, 60 * 2 ** Math.min(steamFailures - 1, 4)));
+      steamRetryAt = Math.max(steamRetryAt, now() + delay * 1000);
+      throw rateLimitError();
+    }
     if (source === 'steam' && [401, 403].includes(response.status)) throw new InventoryError('PRIVATE_INVENTORY', 403);
     if (source === 'steam' && response.status === 404) throw new InventoryError('INVENTORY_NOT_FOUND', 404);
     if (!response.ok) throw new InventoryError(`${source.toUpperCase()}_UNAVAILABLE`, 503);
@@ -62,13 +80,58 @@ export function createInventoryService({ fetcher = (...args) => fetch(...args), 
     throw new InventoryError('INVENTORY_TOO_LARGE', 422);
   }
 
+  async function loadInventory(steamId64, appId, signal) {
+    const cacheKey = `avan:inventory:v1:${steamId64}:${appId}`;
+    let owner = null;
+    try {
+      if (sharedCache) {
+        const cached = await sharedCache.get(cacheKey);
+        if (cached && Array.isArray(cached.assets) && Array.isArray(cached.descriptions)) return cached;
+        const cooldown = await sharedCache.get(COOLDOWN_KEY);
+        if (Number.isFinite(cooldown)) steamRetryAt = Math.max(steamRetryAt, cooldown);
+      }
+      if (steamRetryAt > now()) throw rateLimitError();
+      if (steamBusy) throw new InventoryError('INVENTORY_BUSY', 503, now() + 2000);
+      if (sharedCache) {
+        owner = await sharedCache.acquire(LOCK_KEY, 50_000);
+        if (!owner) throw new InventoryError('INVENTORY_BUSY', 503, now() + 2000);
+      }
+    } catch (error) {
+      if (error instanceof InventoryError) throw error;
+      throw new InventoryError('CACHE_UNAVAILABLE', 503, now() + 10_000);
+    }
+    steamBusy = true;
+    try {
+      const result = await fetchInventory(steamId64, appId, signal);
+      steamFailures = 0;
+      if (sharedCache) await sharedCache.set(cacheKey, result, INVENTORY_TTL_MS);
+      return result;
+    } catch (error) {
+      if (error.code === 'STEAM_RATE_LIMIT' && sharedCache) {
+        try { await sharedCache.set(COOLDOWN_KEY, steamRetryAt, Math.max(1, steamRetryAt - now())); }
+        catch { /* The local cooldown remains active; other instances fail closed if Redis is down. */ }
+      }
+      if (error instanceof InventoryError) throw error;
+      throw new InventoryError('CACHE_UNAVAILABLE', 503, now() + 10_000);
+    } finally {
+      steamBusy = false;
+      if (sharedCache && owner) {
+        try { await sharedCache.release(LOCK_KEY, owner); }
+        catch { /* Owner-checked lease expires on its own if the cache is unavailable. */ }
+      }
+    }
+  }
+
   function getInventory(steamId64, appId, signal) {
     const key = `${steamId64}:${appId}`;
     const cached = inventoryCache.get(key);
     if (cached && cached.expires > now()) return cached.promise;
     if (inventoryCache.size >= 100) inventoryCache.delete(inventoryCache.keys().next().value);
-    const entry = { expires: now() + 30_000 };
-    entry.promise = fetchInventory(steamId64, appId, signal).catch(error => {
+    const entry = { expires: Infinity };
+    entry.promise = loadInventory(steamId64, appId, signal).then(result => {
+      entry.expires = now() + INVENTORY_TTL_MS;
+      return result;
+    }).catch(error => {
       if (inventoryCache.get(key) === entry) inventoryCache.delete(key);
       throw error;
     });
@@ -157,4 +220,4 @@ export function createInventoryService({ fetcher = (...args) => fetch(...args), 
   };
 }
 
-export const evaluateInventory = createInventoryService();
+export const evaluateInventory = createInventoryService({ sharedCache: createSharedInventoryCache() });

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { GAMES, formatInventoryMoney, steamIdFromTradeUrl, summarizeInventory } from '../lib/inventory.mjs';
 import { inventoryCopy } from '../data/inventory-copy';
 import { MINIMUM_PAYOUT_RUB_CENTS } from '../lib/payout.mjs';
+import { retryAfterSeconds } from '../lib/retry.mjs';
 import reference from '../data/reference-content.json';
 import base from './HomePage.module.scss';
 import styles from './Inventory.module.scss';
@@ -25,6 +26,9 @@ export default function Inventory({ t, currency, locale, now, onPrepare }) {
   const [sort, setSort] = useState('price-desc');
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [selection, setSelection] = useState({ identity: '', ids: null });
+  const [retrySeconds, setRetrySeconds] = useState(0);
+  const retryUntilRef = useRef(0);
+  const retryErrorRef = useRef('STEAM_RATE_LIMIT');
   const inputRef = useRef(null);
   const identity = `${steamId}:${appId}`;
   const key = `${identity}:${currency}`;
@@ -37,9 +41,20 @@ export default function Inventory({ t, currency, locale, now, onPrepare }) {
   const selected = summarizeInventory(items.filter(isSelected));
   const money = cents => formatInventoryMoney(cents, result?.currency || currency, locale);
   const date = value => value ? new Intl.DateTimeFormat(locale === 'ru' ? 'ru-RU' : 'en-US', { dateStyle: 'short', timeZone: 'UTC' }).format(new Date(value)) : '';
+  const retryCountdown = `${Math.floor(retrySeconds / 60)}:${String(retrySeconds % 60).padStart(2, '0')}`;
+
+  useEffect(() => {
+    if (!retrySeconds) return;
+    const timer = setInterval(() => setRetrySeconds(Math.max(0, Math.ceil((retryUntilRef.current - performance.now()) / 1000))), 1000);
+    return () => clearInterval(timer);
+  }, [retrySeconds]);
 
   useEffect(() => {
     if (!steamId) return;
+    if (retryUntilRef.current > performance.now()) {
+      setRequest({ key, status: 'error', data: null, error: retryErrorRef.current });
+      return;
+    }
     const controller = new AbortController();
     let active = true;
     setRequest(previous => ({ key, status: 'loading', data: previous.key === key ? previous.data : null, error: null }));
@@ -51,14 +66,24 @@ export default function Inventory({ t, currency, locale, now, onPrepare }) {
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(55_000)]),
         });
         const data = await response.json();
-        if (!response.ok) throw Object.assign(new Error('Inventory request failed'), { code: data.error?.code });
+        if (!response.ok) {
+          const retry = Number.isFinite(data.error?.retryAfterSeconds) ? String(data.error.retryAfterSeconds) : response.headers.get('Retry-After');
+          throw Object.assign(new Error('Inventory request failed'), { code: data.error?.code, delay: retry || response.status === 429 ? retryAfterSeconds(retry) : 0 });
+        }
         if (!Array.isArray(data.items) || !data.summary || !data.pricing) throw new Error('Invalid response');
         if (active) {
           setRequest({ key, status: 'success', data, error: null });
           setEditing(false);
         }
       } catch (failure) {
-        if (active) setRequest({ key, status: 'error', data: null, error: failure.code || (failure.name === 'TimeoutError' ? 'TIMEOUT' : 'NETWORK_ERROR') });
+        if (active) {
+          if (failure.delay) {
+            retryUntilRef.current = performance.now() + failure.delay * 1000;
+            retryErrorRef.current = failure.code;
+            setRetrySeconds(failure.delay);
+          }
+          setRequest({ key, status: 'error', data: null, error: failure.code || (failure.name === 'TimeoutError' ? 'TIMEOUT' : 'NETWORK_ERROR') });
+        }
       }
     })();
     return () => { active = false; controller.abort(); };
@@ -82,6 +107,7 @@ export default function Inventory({ t, currency, locale, now, onPrepare }) {
 
   function submit(event) {
     event.preventDefault();
+    if (retryUntilRef.current > performance.now()) return;
     const parsed = steamIdFromTradeUrl(tradeUrl);
     if (!parsed) { setInvalid(true); inputRef.current?.focus(); return; }
     setInvalid(false);
@@ -114,7 +140,7 @@ export default function Inventory({ t, currency, locale, now, onPrepare }) {
       </div>
       <div className={`${base.inventoryControls} ${styles.controls}`}>
         <div className={base.inventoryGames} aria-label={locale === 'ru' ? 'Игра' : 'Game'}>
-          {GAMES.map(game => <button type="button" className={appId === game.id ? base.inventoryGameActive : ''} aria-label={game.name} aria-pressed={appId === game.id} title={game.name} key={game.id} onClick={() => { setAppId(game.id); setQuery(''); setLimit(PAGE_SIZE); }}>{game.label}</button>)}
+          {GAMES.map(game => <button type="button" className={appId === game.id ? base.inventoryGameActive : ''} aria-label={game.name} aria-pressed={appId === game.id} title={game.name} key={game.id} disabled={retrySeconds > 0} onClick={() => { setAppId(game.id); setQuery(''); setLimit(PAGE_SIZE); }}>{game.label}</button>)}
         </div>
         <input aria-label={t.findItem} placeholder={t.findItem} value={query} disabled={!result || loading || editing} onChange={event => { setQuery(event.target.value); setLimit(PAGE_SIZE); }}/>
         <select aria-label={copy.sort} value={sort} disabled={!result || loading || editing} onChange={event => setSort(event.target.value)}>
@@ -122,7 +148,7 @@ export default function Inventory({ t, currency, locale, now, onPrepare }) {
         </select>
         <button type="button" className={styles.selectAll} onClick={selectVisible} aria-pressed={allVisibleSelected} disabled={!pricedVisible.length || loading || editing}>{query ? copy.selectVisible : copy.selectAll} {allVisibleSelected ? '●' : '◯'}</button>
         <button type="button" className={styles.clear} onClick={() => setSelection({ identity, ids: new Set() })} disabled={!selected.itemCount || loading || editing} aria-label={copy.clear} title={copy.clear}><img src="/assets/icons/broom.svg" alt=""/></button>
-        <button type="button" className={styles.refresh} onClick={() => setRefresh(value => value + 1)} disabled={!steamId || loading || editing} aria-label={copy.refresh} title={copy.refresh}>⟳</button>
+        <button type="button" className={styles.refresh} onClick={() => setRefresh(value => value + 1)} disabled={!steamId || loading || editing || retrySeconds > 0} aria-label={copy.refresh} title={copy.refresh}>⟳</button>
       </div>
       {showGate ? <>
         <div className={base.inventoryThumbs} aria-hidden="true">{reference.inventory.map((image, index) => <div className={base.inventoryThumb} key={index}><img src={image} alt=""/></div>)}</div>
@@ -133,7 +159,7 @@ export default function Inventory({ t, currency, locale, now, onPrepare }) {
             <input ref={inputRef} id="inventory-trade-url" type="url" autoComplete="off" spellCheck={false} inputMode="url" maxLength={512} placeholder="https://steamcommunity.com/tradeoffer/new/?partner=…&token=…" value={tradeUrl} aria-invalid={invalid} aria-describedby={invalid ? 'inventory-url-error' : 'inventory-url-help'} disabled={loading} onChange={event => { setTradeUrl(event.target.value); setInvalid(false); }}/>
             {invalid && <p className={styles.error} id="inventory-url-error" role="alert">{copy.invalidUrl}</p>}
             {error && <p className={styles.error} role="alert">{copy.errors[error] || copy.errors.INTERNAL_ERROR}</p>}
-            <button className={base.yellowButton} type="submit" disabled={loading || !tradeUrl.trim()}>{loading ? <><span className={styles.spinner}/>{copy.loading}</> : copy.evaluate}</button>
+            <button className={base.yellowButton} type="submit" disabled={loading || !tradeUrl.trim() || retrySeconds > 0}>{loading ? <><span className={styles.spinner}/>{copy.loading}</> : retrySeconds > 0 ? `${copy.retryIn} ${retryCountdown}` : copy.evaluate}</button>
             <div className={styles.formLinks}><a href={TRADE_HELP} target="_blank" rel="noopener noreferrer">{copy.help} ↗</a>{editing && result && <button type="button" onClick={() => { setEditing(false); setInvalid(false); }}>{copy.cancel}</button>}</div>
             <small id="inventory-url-help">{copy.publicNote}</small>
             {loading && <span role="status" className={styles.srOnly}>{copy.loading}</span>}
