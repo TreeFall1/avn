@@ -25,19 +25,13 @@
 .form .error { margin: 9px 0 0; color: #ff9b9b; text-align: left; font-size: 13px; line-height: 1.4; }
 .spinner { display: inline-block; width: 17px; height: 17px; border: 2px solid #1115; border-top-color: #111; border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.summary.summary { opacity: 1; min-width: 0; }
+.summary.summary { opacity: 1; min-width: 0; overflow: visible; }
 .summary.summary > strong { font-size: clamp(27px, 3vw, 42px); overflow-wrap: anywhere; margin: 23px 0 18px; }
 .section:not(.loaded) .summary { background: #151518; }
-.section:not(.loaded) .summary > div:last-child { opacity: .6; }
-.totals { margin: 0 0 14px; font-size: 13px; }
-.totals > div { display: flex; justify-content: space-between; gap: 12px; margin: 9px 0; }
-.totals dt { color: #aab0ba; }
-.totals dd { margin: 0; text-align: right; font-weight: 600; }
+.summary > .estimate { margin-top: 16px; }
 .estimate { margin: 0 0 18px; color: #969da9; font-size: 13px; line-height: 1.5; }
 .warning { color: #edc66e; font-size: 12px; line-height: 1.5; margin: 10px 0; padding: 9px 11px; border: 1px solid #edc66e30; border-radius: 6px; background: #edc66e08; }
 .paymentLabel { color: #aab0ba; font-size: 12px; margin-bottom: 10px; }
-.source { display: flex; flex-wrap: wrap; gap: 6px 12px; color: #8993a4; font-size: 11px; line-height: 1.5; margin-top: 17px; }
-.source a { text-decoration: underline; text-underline-offset: 3px; }
 .itemStatus { display: flex; justify-content: space-between; gap: 12px; color: #aab0ba; font-size: 12px; margin-bottom: 12px; }
 .itemStatus a { color: #8993a4; }
 .itemScroll { min-height: 0; max-height: 480px; flex: 1; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: #41444d transparent; padding: 3px; }

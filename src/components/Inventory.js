@@ -3,21 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GAMES, formatInventoryMoney, steamIdFromTradeUrl, summarizeInventory } from '../lib/inventory.mjs';
 import { inventoryCopy } from '../data/inventory-copy';
+import { MINIMUM_PAYOUT_RUB_CENTS } from '../lib/payout.mjs';
 import reference from '../data/reference-content.json';
 import base from './HomePage.module.scss';
 import styles from './Inventory.module.scss';
+import PayoutForm from './PayoutForm';
 
-const payoutMethods = [
-  ['card.svg', 'Cards'], ['16.svg', 'СБП'], ['19.svg', 'Bank Transfer'],
-  ['15.svg', 'PayPal'], ['5.svg', 'TRC'], ['32.svg', 'BEP-20'],
-  ['31.svg', 'BNB'], ['4.svg', 'ERC-20'], ['2.svg', 'BTC'],
-  ['3.svg', 'Ethereum'], ['6.svg', 'TRON'], ['18.svg', 'Litecoin'],
-  ['27.svg', 'Solana'], ['17.svg', 'GRAM'], ['24.svg', 'Steam'], ['20-balance.svg', 'Balance'],
-];
 const TRADE_HELP = 'https://steamcommunity.com/my/tradeoffers/privacy#trade_offer_access_url';
 const PAGE_SIZE = 100;
 
-export default function Inventory({ t, currency, locale }) {
+export default function Inventory({ t, currency, locale, now, onPrepare }) {
   const copy = inventoryCopy[locale];
   const [appId, setAppId] = useState(730);
   const [tradeUrl, setTradeUrl] = useState('');
@@ -156,17 +151,12 @@ export default function Inventory({ t, currency, locale }) {
         </div>
       </>}
     </div>
-    <aside className={`${base.payoutPane} ${styles.summary}`} aria-live="polite" aria-atomic="true">
+    <aside className={`${base.payoutPane} ${styles.summary}`}>
       <div className={base.payoutHeading}><span>{result ? `${copy.selected}: ${selected.itemCount}` : copy.initial}</span>{result && <small>{GAMES.find(game => game.id === appId)?.name}</small>}</div>
-      <strong data-inventory-total>{money(selected.totalCents)}</strong>
-      {result ? <>
-        <dl className={styles.totals}><div><dt>{copy.total}</dt><dd>{money(result.summary.totalCents)}</dd></div><div><dt>{copy.items}</dt><dd>{result.summary.itemCount}</dd></div>{result.summary.unpricedCount > 0 && <div><dt>{copy.unpriced}</dt><dd>{result.summary.unpricedCount}</dd></div>}</dl>
-        {result.warnings.map(warning => <p key={warning} className={styles.warning}>{copy.warnings[warning]} {['ARCHIVE_PRICES', 'CACHED_PRICES'].includes(warning) ? date(result.pricing.updatedAt) : ''}</p>)}
-        <p className={styles.estimate}>{copy.estimate}</p>
-      </> : <p className={styles.estimate}>{copy.initialHint}</p>}
-      <div className={styles.paymentLabel}>{copy.paymentMethods}</div>
-      <div className={base.payoutMethods}>{payoutMethods.map(([image, label]) => <div key={image}><img src={`/assets/payment-methods/${image}`} alt={label}/>{label === 'Balance' && <span>ϟ</span>}</div>)}</div>
-      {result?.pricing.updatedAt && <div className={styles.source}><a href="https://skinport.com/market" target="_blank" rel="noopener noreferrer">{result.pricing.source === 'archive' ? copy.archiveSource : copy.priceSource}</a><span>{copy.updated}: {date(result.pricing.updatedAt)}</span>{result.exchangeRateProvider && <a href={result.exchangeRateProvider} target="_blank" rel="noopener noreferrer">Rates by ExchangeRate-API</a>}</div>}
+      <strong data-inventory-total aria-live="polite">{money(selected.totalCents)}</strong>
+      {result?.warnings.map(warning => <p key={warning} className={styles.warning}>{copy.warnings[warning]} {['ARCHIVE_PRICES', 'CACHED_PRICES'].includes(warning) ? date(result.pricing.updatedAt) : ''}</p>)}
+      <PayoutForm key={steamId || 'guest'} totalCents={selected.totalCents} minimumCents={(result?.currency || currency) === 'RUB' ? MINIMUM_PAYOUT_RUB_CENTS : result?.minimumPayoutCents} currency={result?.currency || currency} locale={locale} disabled={!result || loading || editing} steamId={steamId} now={now} onPrepare={deal => onPrepare?.({ ...deal, itemCount: selected.itemCount })}/>
+      <p className={styles.estimate}>{result ? copy.estimate : copy.initialHint}</p>
     </aside>
   </section>;
 }

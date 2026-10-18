@@ -1,11 +1,12 @@
 """Check the main local interactions in a production build."""
 
 from pathlib import Path
+import sys
 
 from playwright.sync_api import sync_playwright
 
 
-BASE = "http://localhost:3000"
+BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:3000"
 ROOT = Path(__file__).resolve().parents[1]
 CHROME = Path("C:/Program Files/Google/Chrome/Application/chrome.exe")
 

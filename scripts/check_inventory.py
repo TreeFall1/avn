@@ -127,7 +127,7 @@ with sync_playwright() as playwright:
             more.click()
             expect(cards).to_have_count(250)
             assert more.count() == 0
-            expect(section.locator('dl')).to_contain_text('250')
+            expect(section.locator('aside details')).to_have_count(0)
             scroll = section.locator('div[class*="_itemScroll"]')
             assert scroll.evaluate('(el) => el.scrollHeight > el.clientHeight')
             assert not page.evaluate('document.documentElement.scrollWidth > innerWidth')

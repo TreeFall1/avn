@@ -60,10 +60,12 @@ test('Pagination loads every page, deduplicates assets and coalesces requests', 
   assert.equal(a.items.length, 2);
   assert.equal(a.summary.itemCount, 3);
   assert.equal(a.summary.totalCents, 296160);
+  assert.equal(a.minimumPayoutCents, 10000);
   assert.deepEqual(a, b);
   assert.equal(calls.filter(url => url.hostname === 'steamcommunity.com').length, 2);
   assert.equal(calls.filter(url => url.hostname === 'api.skinport.com').length, 1);
-  await evaluate({ steamId64, currency: 'USD' });
+  const usd = await evaluate({ steamId64, currency: 'USD' });
+  assert.equal(usd.minimumPayoutCents, 125);
   assert.equal(calls.length, 4);
   assert.equal(calls[1].searchParams.get('start_assetid'), '1');
 });
@@ -142,6 +144,7 @@ test('Missing exchange rates returns actual USD amounts with explicit currency f
   const result = await evaluate({ steamId64, currency: 'RUB' });
   assert.equal(result.currency, 'USD');
   assert.equal(result.summary.totalCents, 1234);
+  assert.equal(result.minimumPayoutCents, null);
   assert.ok(result.warnings.includes('CURRENCY_FALLBACK'));
 });
 

@@ -70,5 +70,5 @@ with sync_playwright() as playwright:
     browser.close()
 
 print(json.dumps(results, ensure_ascii=True, indent=2))
-assert all(result["status"] == 200 and result["reviewCount"] == expected and result["reviewRows"] == 4 and result["creatorCount"] == 20 and result["liveCount"] == 48 and not result["brokenImages"] and not result["externalRequests"] and not result["horizontalOverflow"] and not result["reviewMore"] and result["liveSteps"] for result, expected in zip(results[:3], (16, 8, 4)))
+assert all(result["status"] == 200 and result["reviewCount"] == expected and result["reviewRows"] == rows and result["creatorCount"] == 20 and result["liveCount"] == 48 and not result["brokenImages"] and not result["externalRequests"] and not result["horizontalOverflow"] and not result["reviewMore"] and result["liveSteps"] for result, expected, rows in zip(results[:3], (12, 8, 4), (3, 4, 4)))
 assert results[3]["clockSkewStats"][0][:3] == results[3]["clockSkewStats"][1][:3]

@@ -1,5 +1,6 @@
 import archivedPrices from '../../data/inventory-prices.json' with { type: 'json' };
 import { GAMES, INVENTORY_CURRENCIES, isSteamId64, normalizeInventory, summarizeInventory } from '../inventory.mjs';
+import { getMinimumPayoutCents } from '../payout.mjs';
 
 export class InventoryError extends Error {
   constructor(code, status = 502) {
@@ -134,14 +135,15 @@ export function createInventoryService({ fetcher = (...args) => fetch(...args), 
     const inventory = await getInventory(steamId64, appId, signal);
     const [pricing, conversion] = await Promise.all([
       inventory.assets.length ? getPrices(appId, signal) : { prices: new Map(), source: 'skinport', updatedAt: null },
-      currency === 'USD' ? { rates: { USD: 1 }, stale: false } : getRates(signal),
+      getRates(signal),
     ]);
-    const requestedRate = conversion.rates[currency];
+    const requestedRate = currency === 'USD' ? 1 : conversion.rates[currency];
     const currencyAvailable = typeof requestedRate === 'number' && Number.isFinite(requestedRate) && requestedRate > 0;
     const resultCurrency = currencyAvailable ? currency : 'USD';
     const items = normalizeInventory(inventory.assets, inventory.descriptions, pricing.prices, currencyAvailable ? requestedRate : 1);
     return {
       steamId64, appId, currency: resultCurrency, items, summary: summarizeInventory(items),
+      minimumPayoutCents: getMinimumPayoutCents(resultCurrency, conversion.rates),
       pricing: { source: pricing.source, updatedAt: pricing.updatedAt, method: 'mean_price' },
       warnings: [
         ...(pricing.source === 'archive' ? ['ARCHIVE_PRICES'] : []),

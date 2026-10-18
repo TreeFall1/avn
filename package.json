@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:inventory": "node --test scripts/inventory.test.mjs"
+    "test:inventory": "node --test scripts/inventory.test.mjs",
+    "test:payout": "node --test scripts/payout.test.mjs"
   },
   "dependencies": {
     "next": "16.4.0",

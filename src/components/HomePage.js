@@ -7,6 +7,7 @@ import { calculateCounters, COUNTER_EPOCH, initialCounters } from '../data/count
 import reference from '../data/reference-content.json';
 import styles from './HomePage.module.scss';
 import Inventory from './Inventory';
+import TradeConfirmation from './TradeConfirmation';
 
 const media = '/media/';
 const logo = `${media}logo.0qvx4qrdl15cs.svg`;
@@ -110,7 +111,7 @@ function Icon({ name, size = 22 }) {
   return <svg {...common}>{paths[name]}</svg>;
 }
 
-function Header({ t, locale, currency, setCurrency }) {
+function Header({ t, locale, currency, setCurrency, onSell = openInventory }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropdown, setDropdown] = useState('');
   const [notice, setNotice] = useState(false);
@@ -122,9 +123,7 @@ function Header({ t, locale, currency, setCurrency }) {
     <button className={styles.burger} aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? 'close' : 'menu'} size={27}/></button>
     <a href={locale === 'ru' ? '/' : '/en'} className={styles.logo} aria-label="Avan Market"><img src={logo} alt="avanmarket"/></a>
     <nav className={styles.desktopNav} aria-label="Main navigation">
-      {t.nav.map((item, index) => index === 3 ?
-        <div className={styles.dropdownRoot} key={item}><button className={styles.navButton} onClick={() => setDropdown(dropdown === 'useful' ? '' : 'useful')} aria-expanded={dropdown === 'useful'}>{item}<Icon name="chevron" size={15}/></button>{dropdown === 'useful' && <div className={styles.dropdownMenu}>{t.useful.map((v, i) => <button key={v} onClick={() => { setDropdown(''); if (i === 2) openInventory(); }}>{v}</button>)}</div>}</div>
-        : <button key={item} className={`${styles.navButton} ${index === 0 ? styles.activeNav : ''}`} onClick={index === 0 ? openInventory : inactive}>{item}</button>)}
+      {t.nav.map(item => <button key={item} className={`${styles.navButton} ${styles.activeNav}`} onClick={onSell}>{item}</button>)}
     </nav>
     <div className={styles.headerActions}>
       <div className={`${styles.dropdownRoot} ${styles.desktopControl}`}><button className={styles.headerSelect} aria-expanded={dropdown === 'language'} onClick={() => setDropdown(dropdown === 'language' ? '' : 'language')}><img className={styles.headerFlag} src={`/assets/icons/flags/${locale === 'ru' ? 'RUS' : 'ENG'}.svg`} alt={locale === 'ru' ? 'Русский' : 'English'}/><Icon name="chevron" size={14}/></button>{dropdown === 'language' && <div className={styles.dropdownMenu}><a href="/ru">RUS</a><a href="/en">ENG</a></div>}</div>
@@ -133,8 +132,7 @@ function Header({ t, locale, currency, setCurrency }) {
       <button className={styles.steamButton} onClick={inactive}><img src="/assets/icons/steam-logo.svg" alt=""/><span>{t.signIn}</span></button>
     </div>
     {menuOpen && <div className={styles.mobileMenu}>
-      {t.nav.map((item, i) => <button key={item} onClick={() => { if (i === 3) setDropdown(dropdown === 'mobileUseful' ? '' : 'mobileUseful'); if (i === 0) { setMenuOpen(false); openInventory(); } }}>{item}{i === 3 && <Icon name="chevron" size={16}/>}</button>)}
-      {dropdown === 'mobileUseful' && t.useful.map((item, i) => <button className={styles.mobileSubitem} key={item} onClick={() => { if (i === 2) { setMenuOpen(false); setDropdown(''); openInventory(); } }}>{item}</button>)}
+      {t.nav.map(item => <button key={item} onClick={() => { setMenuOpen(false); onSell(); }}>{item}</button>)}
       <div className={styles.mobileSettings}><select value={currency} aria-label="Currency" onChange={e => setCurrency(e.target.value)}>{currencies.map(c => <option key={c[0]} value={c[0]}>{c[1]} {c[0]}</option>)}</select><a href={languagePath}>{locale === 'ru' ? 'ENG' : 'RUS'}</a></div>
     </div>}
   </header>;
@@ -158,7 +156,7 @@ function Hero({ t, currency, locale }) {
       <h1>{t.heroTitle}<br/>{t.skins} <span className={styles.heroGame}><span className={styles.heroGameList} aria-label="CS2, Dota 2, Rust, TF2">{['CS2', 'Dota 2', 'Rust', 'TF2', 'CS2'].map((name, index) => <span key={`${name}-${index}`}>{name}</span>)}</span></span></h1>
       <div className={styles.desktopTrust}>{trust}</div>
       <p>{t.heroCopy}</p>
-      <div className={styles.heroButtons}><button className={styles.yellowButton} onClick={openInventory}><img src="/assets/icons/walletMain.svg" alt=""/>{t.sell}</button><button className={styles.darkButton} onClick={inactive}><img src="/assets/icons/cartWhite.svg" alt=""/>{t.buy}</button></div>
+      <div className={styles.heroButtons}><button className={styles.yellowButton} onClick={openInventory}><img src="/assets/icons/walletMain.svg" alt=""/>{t.sell}</button></div>
     </div>
   </section>;
 }
@@ -237,13 +235,13 @@ function Growth({ t }) {
 }
 
 function Reviews({ t, locale, counters }) {
-  const reviews = reference.reviews.slice(0, 16);
-  return <section className={styles.reviewsSection}><div className={styles.sectionHeading}><h2>{t.reviewsCount} {new Intl.NumberFormat('de-DE').format(counters.reviews)} {t.reviewsUnit}</h2><div className={styles.reviewsTrust}>Excellent <span className={styles.trustStars}>★★★★★</span> <u>1,768 reviews on</u> <b>★</b>Trustpilot</div><p className={styles.siteRating}>{t.siteRating} <strong>★ 5/5</strong></p></div><div className={styles.reviewGrid}>{reviews.map((review, index) => <article className={styles.reviewCard} key={index}><div className={styles.reviewPerson}><img src={review.avatar} alt=""/><h3>{review.name}</h3></div><p>{review.comment}</p><div className={styles.reviewRating}><img src="/assets/icons/star.svg" alt=""/><strong>{review.rating} {locale === 'ru' ? 'из' : 'out of'} 5</strong><small>{locale === 'ru' ? 'на AvanMarket' : 'on AvanMarket'}</small></div></article>)}</div></section>;
+  const reviews = reference.reviews;
+  return <section className={styles.reviewsSection}><div className={styles.sectionHeading}><h2>{t.reviewsCount} {new Intl.NumberFormat('de-DE').format(counters.reviews)} {t.reviewsUnit}</h2><div className={styles.reviewsTrust}>Excellent <span className={styles.trustStars}>★★★★★</span> <u>1,768 reviews on</u> <b>★</b>Trustpilot</div><p className={styles.siteRating}>{t.siteRating} <strong>★ 5/5</strong></p></div><div className={styles.reviewGrid}>{reviews.map(review => <a className={styles.reviewCard} key={review.profileUrl} href={review.profileUrl} target="_blank" rel="nofollow noopener noreferrer" aria-label={`${review.name} — Steam`}><div className={styles.reviewPerson}><img src={review.avatar} alt=""/><h3>{review.name}</h3></div><p>{review.comment}</p><div className={styles.reviewRating}><img src="/assets/icons/star.svg" alt=""/><strong>{review.rating} {locale === 'ru' ? 'из' : 'out of'} 5</strong></div></a>)}</div></section>;
 }
 
 function Media({ t, locale }) {
   const [showAll, setShowAll] = useState(false);
-  return <section className={styles.mediaSection}><div className={styles.sectionHeading}><h2>{t.mediaTitle}</h2><p>{t.mediaCopy}</p></div><div className={`${styles.creatorGrid} ${showAll ? styles.creatorGridExpanded : ''}`}>{reference.creators.map((creator) => <button className={styles.creatorCard} key={creator.name} onClick={inactive}><img src={creator.image} alt=""/><div className={styles.creatorInfo}><strong>{creator.name}</strong><span><img src={creator.social} alt=""/>{locale === 'ru' ? creator.count : creator.count.replace('тыс.', 'k.').replace('млн.', 'mln.')}</span></div></button>)}</div><button className={styles.mediaMore} onClick={() => setShowAll(value => !value)}>{showAll ? (locale === 'ru' ? 'Свернуть' : 'Collapse') : t.showAll}</button></section>;
+  return <section className={styles.mediaSection}><div className={styles.sectionHeading}><h2>{t.mediaTitle}</h2><p>{t.mediaCopy}</p></div><div className={`${styles.creatorGrid} ${showAll ? styles.creatorGridExpanded : ''}`}>{reference.creators.map(creator => <a className={styles.creatorCard} key={creator.name} href={creator.url} target="_blank" rel="noopener noreferrer"><img src={creator.image} alt=""/><div className={styles.creatorInfo}><strong>{creator.name}</strong><span><img src={creator.social} alt=""/>{locale === 'ru' ? creator.count : creator.count.replace('тыс.', 'k.').replace('млн.', 'mln.')}</span></div></a>)}</div><button className={styles.mediaMore} onClick={() => setShowAll(value => !value)}>{showAll ? (locale === 'ru' ? 'Свернуть' : 'Collapse') : t.showAll}</button></section>;
 }
 
 function Statistics({ t, locale, currency, counters }) {
@@ -261,9 +259,9 @@ function Articles({ t }) {
   return <section className={styles.articlesSection}><div className={styles.articlesHeading}><h2><span>▣</span>{t.articlesTitle}</h2><button onClick={() => ref.current?.scrollBy({ left: 360, behavior: 'smooth' })}>{t.showAll}<Icon name="arrow" size={18}/></button></div><div className={styles.articleRail} ref={ref}>{t.articles.map(([date, title], i) => <article className={styles.articleCard} key={title}><button onClick={inactive} aria-label={title}><img src={articleImages[i]} alt=""/></button><time>{date}</time><h3>{title}</h3></article>)}</div></section>;
 }
 
-function Footer({ t, locale }) {
+function Footer({ t, onSell = openInventory }) {
   const [open, setOpen] = useState(-1);
-  return <footer className={styles.footer}><div className={styles.footerColumns}>{t.footer.map(([title, ...items], i) => <div className={styles.footerColumn} key={title}><button className={styles.footerHeading} onClick={() => setOpen(open === i ? -1 : i)} aria-expanded={open === i}>{title}<Icon name="chevron" size={16}/></button><div className={`${styles.footerLinks} ${open === i ? styles.footerLinksOpen : ''}`}>{i === 5 ? <div className={styles.socials}>{items.map((item, index) => <button key={item} aria-label={item} onClick={inactive}>{['ᴠκ', '▶', '➤', '♪', '◎'][index]}</button>)}</div> : items.map((item, index) => <button key={item} onClick={i === 3 && index === 0 ? openInventory : inactive}>{item}</button>)}</div></div>)}</div><div className={styles.footerBottom}><img src={logoSmall} alt="Avan Market"/><div><div className={styles.legalLinks}>{t.legal.map(item => <button onClick={inactive} key={item}>{item}</button>)}</div><p>© 2026 Avanmarket. All Rights Reserved.</p></div><div className={styles.payments}>VISA <span>●●</span> ₿ ◆ ₮ ◈ ℗</div></div><div className={styles.company}>Digital Black Horizon - FZCO · License number 37185 · Building A1, Dubai Digital Park, Dubai Silicon Oasis, Dubai, United Arab Emirates</div></footer>;
+  return <footer className={styles.footer}><div className={styles.footerColumns}>{t.footer.map(([title, ...items], i) => <div className={styles.footerColumn} key={title}><button className={styles.footerHeading} onClick={() => setOpen(open === i ? -1 : i)} aria-expanded={open === i}>{title}<Icon name="chevron" size={16}/></button><div className={`${styles.footerLinks} ${open === i ? styles.footerLinksOpen : ''}`}>{items.map(item => <button key={item} onClick={onSell}>{item}</button>)}</div></div>)}</div><div className={styles.footerBottom}><img src={logoSmall} alt="Avan Market"/><div><div className={styles.legalLinks}>{t.legal.map(item => <button onClick={inactive} key={item}>{item}</button>)}</div><p>© 2026 Avanmarket. All Rights Reserved.</p></div><div className={styles.payments}>VISA <span>●●</span> ₿ ◆ ₮ ◈ ℗</div></div><div className={styles.company}>Digital Black Horizon - FZCO · License number 37185 · Building A1, Dubai Digital Park, Dubai Silicon Oasis, Dubai, United Arab Emirates</div></footer>;
 }
 
 function ChatWidget({ locale }) {
@@ -302,6 +300,7 @@ export default function HomePage({ locale = 'ru' }) {
   const pathname = usePathname();
   const [currency, setCurrency] = useState(locale === 'ru' ? 'RUB' : 'USD');
   const [modal, setModal] = useState(false);
+  const [deal, setDeal] = useState(null);
   const now = useSyncedTime();
   const counters = now === COUNTER_EPOCH ? initialCounters : calculateCounters(now);
   useEffect(() => {
@@ -310,5 +309,29 @@ export default function HomePage({ locale = 'ru' }) {
   }, []);
   useEffect(() => { setCurrency(locale === 'ru' ? 'RUB' : 'USD'); document.documentElement.lang = locale; }, [locale, pathname]);
   const closeModal = () => { setModal(false); window.sessionStorage.setItem('avan-welcome-seen', '1'); };
-  return <div className={styles.site}><Header t={t} locale={locale} currency={currency} setCurrency={setCurrency}/><main><Hero t={t} currency={currency} locale={locale}/><Benefits t={t}/><PaymentMethods/><Inventory t={t} currency={currency} locale={locale}/><LiveFeed t={t} locale={locale} currency={currency} counters={counters} now={now}/><Statistics t={t} locale={locale} currency={currency} counters={counters}/><Reviews t={t} locale={locale} counters={counters}/><Media t={t} locale={locale}/><Articles t={t}/><FAQ t={t}/></main><Footer t={t} locale={locale}/><ChatWidget locale={locale}/>{modal && <WelcomeModal t={t} locale={locale} close={closeModal}/>}</div>;
+  const returnToInventory = () => {
+    setDeal(null);
+    requestAnimationFrame(() => {
+      openInventory();
+      document.querySelector('#inventory aside button[type="submit"]')?.focus({ preventScroll: true });
+    });
+  };
+  return <div className={styles.site}>
+    <Header t={t} locale={locale} currency={currency} setCurrency={setCurrency} onSell={returnToInventory}/>
+    <main>
+      <div hidden={Boolean(deal)}>
+        <Hero t={t} currency={currency} locale={locale}/>
+        <Benefits t={t}/><PaymentMethods/>
+        <Inventory t={t} currency={currency} locale={locale} now={now} onPrepare={setDeal}/>
+        <LiveFeed t={t} locale={locale} currency={currency} counters={counters} now={now}/>
+        <Statistics t={t} locale={locale} currency={currency} counters={counters}/>
+        <Reviews t={t} locale={locale} counters={counters}/><Media t={t} locale={locale}/>
+        <Articles t={t}/><FAQ t={t}/>
+      </div>
+      {deal && <TradeConfirmation deal={deal} locale={locale} onBack={returnToInventory}/>}
+    </main>
+    <Footer t={t} locale={locale} onSell={returnToInventory}/>
+    {!deal && <ChatWidget locale={locale}/>}
+    {modal && <WelcomeModal t={t} locale={locale} close={closeModal}/>}
+  </div>;
 }
